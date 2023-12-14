@@ -1,0 +1,21 @@
+{
+  "name": "hypertrace-prometheus",
+  "version": "1.0.0",
+  "description": "Adds support for Prometheus/Grafana to hypertrace",
+  "main": "index.js",
+  "scripts": {
+    "test": "standard && node test/test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "prom-client": "^15.0.0"
+  },
+  "devDependencies": {
+    "axios": "^1.6.2",
+    "brittle": "^3.3.2",
+    "hypertrace": "file:../hypertrace",
+    "standard": "^17.1.0"
+  }
+}
