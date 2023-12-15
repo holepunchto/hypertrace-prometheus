@@ -1,8 +1,8 @@
 const Hypertrace = require('hypertrace')
 
 module.exports = class SomeModule {
-  constructor (customProperties) {
-    this.tracer = new Hypertrace(this, { customProperties })
+  constructor (props) {
+    this.tracer = new Hypertrace(this, { props })
   }
 
   foo (opts) {

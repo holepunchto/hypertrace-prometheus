@@ -3,10 +3,9 @@ const Prometheus = require('prom-client')
 
 const VALID_PROMETHEUS_LABEL_CHARACTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'
 
-module.exports = ({ port, allowedCustomProperties = [], collectDefaults = true }) => {
+module.exports = ({ port, allowedProps = [], collectDefaults = true }) => {
   const register = new Prometheus.Registry()
 
-  const cleanedAllowedCustomProperties = allowedCustomProperties?.map(name => strToValidPrometheusLabel(name))
   const labelNames = [
     'object_classname',
     'object_id',
@@ -14,7 +13,13 @@ module.exports = ({ port, allowedCustomProperties = [], collectDefaults = true }
     'parent_object_id',
     'caller_functionname',
     'caller_filename'
-  ].concat(cleanedAllowedCustomProperties)
+  ]
+  allowedProps?.forEach(name => {
+    const cleanedName = strToValidPrometheusLabel(name)
+    labelNames.push(`object_props_${cleanedName}`)
+    labelNames.push(`parent_object_props_${cleanedName}`)
+    labelNames.push(`caller_props_${cleanedName}`)
+  })
 
   const traceCounter = new Prometheus.Counter({
     name: 'trace_counter',
@@ -37,7 +42,7 @@ module.exports = ({ port, allowedCustomProperties = [], collectDefaults = true }
   })
   server.listen(port)
 
-  function traceFunction ({ object, parentObject, caller, customProperties }) {
+  function traceFunction ({ object, parentObject, caller }) {
     const labels = {
       object_classname: object.className,
       object_id: object.id,
@@ -46,12 +51,14 @@ module.exports = ({ port, allowedCustomProperties = [], collectDefaults = true }
     }
     if (parentObject?.className) labels.parent_object_classname = parentObject.className
     if (parentObject?.id) labels.parent_object_id = parentObject.id
-    allowedCustomProperties?.forEach(name => {
-      const value = customProperties[name]
-      if (value !== undefined) {
-        const cleanedName = strToValidPrometheusLabel(name)
-        labels[cleanedName] = value
-      }
+    allowedProps?.forEach(name => {
+      const cleanedName = strToValidPrometheusLabel(name)
+      const objectValue = object.props?.[name]
+      const parentObjectValue = parentObject?.props?.[name]
+      const callerValue = caller.props?.[name]
+      if (objectValue !== undefined) labels[`object_props_${cleanedName}`] = objectValue
+      if (parentObjectValue !== undefined) labels[`parent_object_props_${cleanedName}`] = parentObjectValue
+      if (callerValue !== undefined) labels[`caller_props_${cleanedName}`] = callerValue
     })
     traceCounter.inc(labels)
   }
