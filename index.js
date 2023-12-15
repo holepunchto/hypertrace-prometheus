@@ -8,7 +8,12 @@ module.exports = ({ port, allowedCustomProperties = [], collectDefaults = true }
 
   const cleanedAllowedCustomProperties = allowedCustomProperties?.map(name => strToValidPrometheusLabel(name))
   const labelNames = [
-    'caller_classname', 'caller_object_id', 'caller_functionname', 'caller_filename'
+    'object_classname',
+    'object_id',
+    'parent_object_classname',
+    'parent_object_id',
+    'caller_functionname',
+    'caller_filename'
   ].concat(cleanedAllowedCustomProperties)
 
   const traceCounter = new Prometheus.Counter({
@@ -32,13 +37,15 @@ module.exports = ({ port, allowedCustomProperties = [], collectDefaults = true }
   })
   server.listen(port)
 
-  function traceFunction ({ caller, args, customProperties }) {
+  function traceFunction ({ object, parentObject, caller, customProperties }) {
     const labels = {
-      caller_classname: caller.className,
-      caller_object_id: caller.objectId,
+      object_classname: object.className,
+      object_id: object.id,
       caller_functionname: caller.functionName,
       caller_filename: caller.filename
     }
+    if (parentObject?.className) labels.parent_object_classname = parentObject.className
+    if (parentObject?.id) labels.parent_object_id = parentObject.id
     allowedCustomProperties?.forEach(name => {
       const value = customProperties[name]
       if (value !== undefined) {

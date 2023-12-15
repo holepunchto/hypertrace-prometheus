@@ -57,7 +57,7 @@ To set up for use in Prometheus (and optionally Grafana), read the section below
 
 Start serving http://localhost:{port}/metrics which Prometheus can use as a monitoring target. Read more on how to set this up in sections below.
 
-Returns a trace function that be passed to `Hypertrace`. The trace function looks like `({ caller, args, customProperties }) => { ... }`
+Returns a trace function that be passed to `Hypertrace`. The trace function looks like `({ object, parentObject, caller, customProperties }) => { ... }`
 
 - **port**: The port the http server will be hosted on
 - **allowedCustomProperties**: An array of allow customr properties that will be passed on to Prometheus. This is needed because Prometheus does not allow dynamic creation of labels
@@ -170,7 +170,7 @@ Group function calls to `Hypercore` together to easier investigate which functio
 ```
 sum by (caller_functionname) (
   rate(
-    function_counter{caller_classname="Hypercore"}[$__rate_interval]
+    function_counter{object_classname="Hypercore"}[$__rate_interval]
   )
 )
 ```

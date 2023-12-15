@@ -66,10 +66,64 @@ test('Labels are set for trace_counter', async t => {
   const { data } = await axios.get('http://localhost:4343/metrics')
   const [, typeStr, counterStr] = data.split('\n')
   t.is(typeStr, '# TYPE trace_counter counter')
-  t.ok(counterStr.includes('caller_classname="SomeModule"'))
-  t.ok(counterStr.includes('caller_object_id="'))
+  t.ok(counterStr.includes('object_classname="SomeModule"'))
+  t.ok(counterStr.includes('object_id="'))
   t.ok(counterStr.includes('caller_functionname="foo"'))
   t.ok(counterStr.includes('caller_filename="/test/SomeModule.js"'))
+})
+
+test('parentObject properties are not set if no parent tracer is set', async t => {
+  t.teardown(teardown)
+  t.plan(1)
+
+  tf = HypertracePrometheus({ port: 4343, collectDefaults: true })
+  Hypertrace.setTraceFunction(tf)
+
+  const someModule = new SomeModule()
+  someModule.foo()
+
+  const { data } = await axios.get('http://localhost:4343/metrics')
+  const [, , counterStr] = data.split('\n')
+  t.absent(counterStr.includes('parent_object'))
+})
+
+test('parentObject properties are set if parent tracer is set', async t => {
+  t.teardown(teardown)
+  t.plan(4)
+
+  tf = HypertracePrometheus({ port: 4343, collectDefaults: true })
+  Hypertrace.setTraceFunction(tf)
+
+  class Parent {
+    constructor () {
+      this.tracer = new Hypertrace(this)
+    }
+
+    createChild () {
+      return new Child(this.tracer)
+    }
+  }
+
+  class Child {
+    constructor (parenTracer) {
+      this.tracer = new Hypertrace(this, { parent: parenTracer })
+    }
+
+    foo () {
+      this.tracer.trace()
+    }
+  }
+
+  const parent = new Parent()
+  const child = parent.createChild()
+  child.foo()
+
+  const { data } = await axios.get('http://localhost:4343/metrics')
+  const [, , counterStr] = data.split('\n')
+  t.ok(counterStr.includes('object_classname="Child'))
+  t.ok(counterStr.includes('object_id="1"'))
+  t.ok(counterStr.includes('parent_object_classname="Parent'))
+  t.ok(counterStr.includes('parent_object_id="1"'))
 })
 
 test('Counter is set for trace_counter', async t => {
