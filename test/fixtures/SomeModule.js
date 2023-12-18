@@ -1,8 +1,8 @@
-const Hypertrace = require('hypertrace')
+const { createTracer } = require('hypertrace')
 
 module.exports = class SomeModule {
   constructor (props) {
-    this.tracer = new Hypertrace(this, { props })
+    this.tracer = createTracer(this, { props })
   }
 
   foo (opts) {

@@ -1,14 +1,14 @@
 const test = require('brittle')
 const HypertracePrometheus = require('../')
-const SomeModule = require('./SomeModule.js')
+const SomeModule = require('./fixtures/SomeModule.js')
 const axios = require('axios')
-const Hypertrace = require('hypertrace')
+const { clearTraceFunction, setTraceFunction, createTracer } = require('hypertrace')
 
 let tf
 
 function teardown () {
   tf?.stop()
-  Hypertrace.clearTraceFunction()
+  clearTraceFunction()
 }
 
 test('Creates http server with /metrics endpoint', async t => {
@@ -58,7 +58,7 @@ test('Labels are set for trace_counter', async t => {
   t.plan(5)
 
   tf = HypertracePrometheus({ port: 4343, collectDefaults: true })
-  Hypertrace.setTraceFunction(tf)
+  setTraceFunction(tf)
 
   const someModule = new SomeModule()
   someModule.foo()
@@ -69,7 +69,7 @@ test('Labels are set for trace_counter', async t => {
   t.ok(counterStr.includes('object_classname="SomeModule"'))
   t.ok(counterStr.includes('object_id="'))
   t.ok(counterStr.includes('caller_functionname="foo"'))
-  t.ok(counterStr.includes('caller_filename="/test/SomeModule.js"'))
+  t.ok(counterStr.match(/caller_filename="[^"]*\/test\/fixtures\/SomeModule.js"/))
 })
 
 test('parentObject properties are not set if no parent tracer is set', async t => {
@@ -77,7 +77,7 @@ test('parentObject properties are not set if no parent tracer is set', async t =
   t.plan(1)
 
   tf = HypertracePrometheus({ port: 4343, collectDefaults: true })
-  Hypertrace.setTraceFunction(tf)
+  setTraceFunction(tf)
 
   const someModule = new SomeModule()
   someModule.foo()
@@ -92,11 +92,11 @@ test('parentObject is set if parent tracer is set', async t => {
   t.plan(4)
 
   tf = HypertracePrometheus({ port: 4343, collectDefaults: true })
-  Hypertrace.setTraceFunction(tf)
+  setTraceFunction(tf)
 
   class Parent {
     constructor () {
-      this.tracer = new Hypertrace(this)
+      this.tracer = createTracer(this)
     }
 
     createChild () {
@@ -106,7 +106,7 @@ test('parentObject is set if parent tracer is set', async t => {
 
   class Child {
     constructor (parenTracer) {
-      this.tracer = new Hypertrace(this, { parent: parenTracer })
+      this.tracer = createTracer(this, { parent: parenTracer })
     }
 
     foo () {
@@ -131,7 +131,7 @@ test('Counter is set for trace_counter', async t => {
   t.plan(2)
 
   tf = HypertracePrometheus({ port: 4343, collectDefaults: true })
-  Hypertrace.setTraceFunction(tf)
+  setTraceFunction(tf)
 
   const someModule = new SomeModule()
 
@@ -157,7 +157,7 @@ test('Collect props passed to caller', async t => {
     allowedProps: ['baz'],
     collectDefaults: false
   })
-  Hypertrace.setTraceFunction(tf)
+  setTraceFunction(tf)
 
   const someProps = {
     baz: 42
@@ -179,7 +179,7 @@ test('Collect props passed at initiation as object_props_[name]', async t => {
     allowedProps: ['foo'],
     collectDefaults: false
   })
-  Hypertrace.setTraceFunction(tf)
+  setTraceFunction(tf)
 
   const someProps = {
     foo: 'bleh'
@@ -201,7 +201,7 @@ test('Collect props passed to parents initiations', async t => {
     allowedProps: ['foo'],
     collectDefaults: false
   })
-  Hypertrace.setTraceFunction(tf)
+  setTraceFunction(tf)
 
   const someProps = {
     foo: 'bar'
@@ -209,7 +209,7 @@ test('Collect props passed to parents initiations', async t => {
 
   class Parent {
     constructor () {
-      this.tracer = new Hypertrace(this, { props: someProps })
+      this.tracer = createTracer(this, { props: someProps })
     }
 
     createChild () {
@@ -219,7 +219,7 @@ test('Collect props passed to parents initiations', async t => {
 
   class Child {
     constructor (parentTracer) {
-      this.tracer = new Hypertrace(this, { parent: parentTracer })
+      this.tracer = createTracer(this, { parent: parentTracer })
     }
 
     foo () {
@@ -245,7 +245,7 @@ test('Setting non-allowed custom properties means they are not captured', async 
     allowedProps: ['someAllowedProperty'],
     collectDefaults: false
   })
-  Hypertrace.setTraceFunction(tf)
+  setTraceFunction(tf)
 
   const props = {
     someAllowedProperty: 'foo',
@@ -269,7 +269,7 @@ test('Collecting custom properties with illegal label characters, changes the ch
     allowedProps: ['foo-bar'],
     collectDefaults: false
   })
-  Hypertrace.setTraceFunction(tf)
+  setTraceFunction(tf)
 
   const someProps = {
     'foo-bar': 'foo'
