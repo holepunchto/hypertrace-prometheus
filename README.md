@@ -53,20 +53,24 @@ To set up for use in Prometheus (and optionally Grafana), read the section below
 
 ## Methods
 
-### HypertracePrometheus({ port, collectDefaults = true, allowedProps = [] })
+### HypertracePrometheus({ port, register = null, collectDefaults = true, allowedProps = [] })
 
-Start serving http://localhost:{port}/metrics which Prometheus can use as a monitoring target. Read more on how to set this up in sections below.
+Returns a trace function that be passed to `Hypertrace`. The trace function looks like `({ id, object, parentObject, caller }) => { ... }`
 
-Returns a trace function that be passed to `Hypertrace`. The trace function looks like `({ object, parentObject, caller }) => { ... }`
+If `port` is passed, a server is started on http://localhost:{port}/metrics which Prometheus can use as a monitoring target. Read more on how to set this up in sections below.
 
-
-- **port**: The port the http server will be hosted on
+- **port**: (optional) If passed, then an http server will be started on this port.
+- **register**: A Prometheus registry. This is helpful if you need to handle everything yourself.
 - **collectDefaults**: By default Prometheus' node client will record some basic metrics. Set to `false` to disallow that.
 - **allowedProps**: An array of allow customr properties that will be passed on to Prometheus. This is needed because Prometheus does not allow dynamic creation of labels. Note that in Prometheus the name will be changed, depending on where the prop were captured. So if `allowedProps = ['foo']` then it will be named `object_props_foo`, `parent_object_props_foo`, or `called_props_foo` depending on which prop it is.
 
-### .stop()
+### async .metrics()
 
-Stop the server
+Returns the metrics. This is helpful to use if not passing `port` and handling the server by yourself. This is similar to Prometheus' `await registry.metrics()`.
+
+### async .stop()
+
+Unregister the metric from the Prometheus registry and stop the server (if `port` was passed).
 
 ## Usage with Grafana and Prometheus
 

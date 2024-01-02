@@ -1,13 +1,16 @@
 const test = require('brittle')
 const HypertracePrometheus = require('../')
+const Prometheus = require('prom-client')
 const SomeModule = require('./fixtures/SomeModule.js')
 const axios = require('axios')
 const { clearTraceFunction, setTraceFunction, createTracer } = require('hypertrace')
+const http = require('http')
 
 let tf
 
-function teardown () {
-  tf?.stop()
+async function teardown () {
+  await tf?.stop()
+  Prometheus.register.clear()
   clearTraceFunction()
 }
 
@@ -55,17 +58,18 @@ test('Setting collectDefaults = false does not add default metrics', async t => 
 
 test('Labels are set for trace_counter', async t => {
   t.teardown(teardown)
-  t.plan(5)
+  t.plan(6)
 
   tf = HypertracePrometheus({ port: 4343, collectDefaults: true })
   setTraceFunction(tf)
 
   const someModule = new SomeModule()
-  someModule.foo()
+  someModule.foo('foobar')
 
   const { data } = await axios.get('http://localhost:4343/metrics')
   const [, typeStr, counterStr] = data.split('\n')
   t.is(typeStr, '# TYPE trace_counter counter')
+  t.ok(counterStr.includes('id="foobar"'))
   t.ok(counterStr.includes('object_classname="SomeModule"'))
   t.ok(counterStr.includes('object_id="'))
   t.ok(counterStr.includes('caller_functionname="foo"'))
@@ -281,4 +285,58 @@ test('Collecting custom properties with illegal label characters, changes the ch
   const [, , counterStr] = data.split('\n')
   t.ok(counterStr.includes('foo_bar'))
   t.absent(counterStr.includes('foo-bar'))
+})
+
+test('Passing own register means that user is able to read metrics on the passed register', async t => {
+  t.teardown(teardown)
+  t.plan(3)
+
+  const register = new Prometheus.Registry()
+  tf = HypertracePrometheus({ register, collectDefaults: false })
+  setTraceFunction(tf)
+
+  const someModule = new SomeModule()
+  someModule.foo()
+
+  const metrics = await register.metrics()
+  const traceMetric = metrics.split('\n')[2]
+  t.ok(traceMetric.includes('object_classname="SomeModule"'))
+  t.ok(traceMetric.includes('caller_functionname="foo"'))
+  t.ok(traceMetric.endsWith('1'))
+})
+
+test('Passing own register and port starts server on that port', async t => {
+  t.teardown(teardown)
+  t.plan(1)
+
+  const register = new Prometheus.Registry()
+  tf = HypertracePrometheus({ register, port: 4343, collectDefaults: false })
+  setTraceFunction(tf)
+
+  const someModule = new SomeModule()
+  someModule.foo()
+
+  const { data } = await axios.get('http://localhost:4343/metrics')
+  t.ok(data.includes('# HELP trace_counter Counts how many times a function has been traced'))
+})
+
+test('If passing own server, should implement using .metrics()', async t => {
+  t.teardown(teardown)
+  t.plan(2)
+
+  const server = http.createServer(async (_, res) => {
+    const metrics = await tf.metrics()
+    res.end(metrics)
+  })
+  server.listen(4342)
+  tf = HypertracePrometheus({ server, collectDefaults: false })
+
+  // No server running on 4343
+  t.exception(async () => {
+    await axios.get('http://localhost:4343/metrics', { timeout: 1000 })
+  })
+
+  const { data } = await axios.get('http://localhost:4342')
+  t.ok(data.includes('# HELP trace_counter Counts how many times a function has been traced'))
+  server.close()
 })

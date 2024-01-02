@@ -3,10 +3,12 @@ const Prometheus = require('prom-client')
 
 const VALID_PROMETHEUS_LABEL_CHARACTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'
 
-module.exports = ({ port, allowedProps = [], collectDefaults = true }) => {
-  const register = new Prometheus.Registry()
+module.exports = ({ port, register = null, allowedProps = [], collectDefaults = true }) => {
+  let server
+  register = register || new Prometheus.Registry()
 
   const labelNames = [
+    'id',
     'object_classname',
     'object_id',
     'parent_object_classname',
@@ -32,23 +34,26 @@ module.exports = ({ port, allowedProps = [], collectDefaults = true }) => {
     Prometheus.collectDefaultMetrics({ register })
   }
 
-  const server = http.createServer(async (req, res) => {
-    const isMetricsEndpoint = req.url === '/metrics'
-    if (!isMetricsEndpoint) return res.end()
+  if (port) {
+    server = http.createServer(async (req, res) => {
+      const isMetricsEndpoint = req.url === '/metrics'
+      if (!isMetricsEndpoint) return res.end()
 
-    res.setHeader('Content-Type', register.contentType)
-    const metrics = await register.metrics()
-    res.end(metrics)
-  })
-  server.listen(port)
+      res.setHeader('Content-Type', register.contentType)
+      const metrics = await register.metrics()
+      res.end(metrics)
+    })
+    server.listen(port)
+  }
 
-  function traceFunction ({ object, parentObject, caller }) {
+  function traceFunction ({ id, object, parentObject, caller }) {
     const labels = {
       object_classname: object.className,
       object_id: object.id,
       caller_functionname: caller.functionName,
       caller_filename: caller.filename
     }
+    if (id) labels.id = id
     if (parentObject?.className) labels.parent_object_classname = parentObject.className
     if (parentObject?.id) labels.parent_object_id = parentObject.id
     allowedProps?.forEach(name => {
@@ -63,10 +68,12 @@ module.exports = ({ port, allowedProps = [], collectDefaults = true }) => {
     traceCounter.inc(labels)
   }
 
-  traceFunction.stop = () => {
-    Prometheus.register.clear()
-    server.close()
+  traceFunction.stop = async () => {
+    register.removeSingleMetric(traceCounter.name)
+    if (server) return new Promise(resolve => server.close(resolve))
   }
+
+  traceFunction.metrics = () => register.metrics()
 
   return traceFunction
 }
