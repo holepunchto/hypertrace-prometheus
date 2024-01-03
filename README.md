@@ -83,18 +83,6 @@ A simple graph on how it's working
 (data from HTTP /metrics)     (store data)         (visualize)
 ```
 
-Let's assume Grafana and Prometheus are running. See section below on how do that. Also assume that modules/classes have been instrumented like `SomeModule` in the section above. Then add this to the app:
-
-``` js
-import Hypertrace from 'hypertrace'
-
-Hypertrace.addPrometheusMonitoringTarget({
-  port: 4343
-})
-```
-
-Then `http://localhost:4343` needs to be added as a monitoring target for Prometheus. See the section below for more info.
-
 ## How to install and use Prometheus on macOS
 
 **Note**: even though this example is for macOS, most of the steps would be the same for any OS.
