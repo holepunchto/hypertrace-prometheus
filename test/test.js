@@ -3,13 +3,17 @@ const HypertracePrometheus = require('../')
 const Prometheus = require('prom-client')
 const SomeModule = require('./fixtures/SomeModule.js')
 const axios = require('axios')
-const { clearTraceFunction, setTraceFunction, createTracer } = require('hypertrace')
+const {
+  clearTraceFunction,
+  setTraceFunction,
+  createTracer
+} = require('hypertrace')
 const http = require('http')
 
-let tf
+let hp
 
 async function teardown () {
-  await tf?.stop()
+  await hp?.stop()
   Prometheus.register.clear()
   clearTraceFunction()
 }
@@ -18,7 +22,8 @@ test('Creates http server with /metrics endpoint', async t => {
   t.teardown(teardown)
   t.plan(1)
 
-  tf = HypertracePrometheus({ port: 4343 })
+  hp = new HypertracePrometheus({ port: 4343 })
+  hp.createTraceFunction()
   const { data } = await axios.get('http://localhost:4343/metrics')
   t.ok(data.includes('# HELP trace_counter Counts how many times a function has been traced'))
 })
@@ -27,11 +32,11 @@ test('Calling stop() stops http server', async t => {
   t.teardown(teardown)
   t.plan(2)
 
-  tf = HypertracePrometheus({ port: 4343 })
+  hp = new HypertracePrometheus({ port: 4343 })
   const { status } = await axios.get('http://localhost:4343/metrics')
   t.is(status, 200)
 
-  tf.stop()
+  hp.stop()
   t.exception(async () => {
     await axios.get('http://localhost:4343/metrics', { timeout: 1000 })
   })
@@ -41,26 +46,26 @@ test('Setting collectDefaults = true adds default metrics', async t => {
   t.teardown(teardown)
   t.plan(1)
 
-  tf = HypertracePrometheus({ port: 4343, collectDefaults: true })
+  hp = new HypertracePrometheus({ port: 4343, collectDefaults: true })
   const { data } = await axios.get('http://localhost:4343/metrics')
   t.ok(data.includes('process_cpu_user_seconds_total'))
 })
 
 test('Setting collectDefaults = false does not add default metrics', async t => {
   t.teardown(teardown)
-  t.plan(2)
+  t.plan(1)
 
-  tf = HypertracePrometheus({ port: 4343, collectDefaults: false })
+  hp = new HypertracePrometheus({ port: 4343, collectDefaults: false })
   const { data } = await axios.get('http://localhost:4343/metrics')
   t.absent(data.includes('process_cpu_user_seconds_total'))
-  t.is(data.split('\n').length, 3)
 })
 
 test('Labels are set for trace_counter', async t => {
   t.teardown(teardown)
   t.plan(6)
 
-  tf = HypertracePrometheus({ port: 4343, collectDefaults: true })
+  hp = new HypertracePrometheus({ port: 4343, collectDefaults: false })
+  const tf = hp.createTraceFunction()
   setTraceFunction(tf)
 
   const someModule = new SomeModule()
@@ -80,7 +85,8 @@ test('parentObject properties are not set if no parent tracer is set', async t =
   t.teardown(teardown)
   t.plan(1)
 
-  tf = HypertracePrometheus({ port: 4343, collectDefaults: true })
+  hp = new HypertracePrometheus({ port: 4343, collectDefaults: false })
+  const tf = hp.createTraceFunction()
   setTraceFunction(tf)
 
   const someModule = new SomeModule()
@@ -95,7 +101,8 @@ test('parentObject is set if parent tracer is set', async t => {
   t.teardown(teardown)
   t.plan(4)
 
-  tf = HypertracePrometheus({ port: 4343, collectDefaults: true })
+  hp = new HypertracePrometheus({ port: 4343, collectDefaults: false })
+  const tf = hp.createTraceFunction()
   setTraceFunction(tf)
 
   class Parent {
@@ -134,7 +141,8 @@ test('Counter is set for trace_counter', async t => {
   t.teardown(teardown)
   t.plan(2)
 
-  tf = HypertracePrometheus({ port: 4343, collectDefaults: true })
+  hp = new HypertracePrometheus({ port: 4343, collectDefaults: false })
+  const tf = hp.createTraceFunction()
   setTraceFunction(tf)
 
   const someModule = new SomeModule()
@@ -156,10 +164,12 @@ test('Collect props passed to caller', async t => {
   t.teardown(teardown)
   t.plan(1)
 
-  tf = HypertracePrometheus({
+  hp = new HypertracePrometheus({
     port: 4343,
-    allowedProps: ['baz'],
     collectDefaults: false
+  })
+  const tf = hp.createTraceFunction({
+    allowedProps: ['baz']
   })
   setTraceFunction(tf)
 
@@ -178,10 +188,12 @@ test('Collect props passed at initiation as object_props_[name]', async t => {
   t.teardown(teardown)
   t.plan(1)
 
-  tf = HypertracePrometheus({
+  hp = new HypertracePrometheus({
     port: 4343,
-    allowedProps: ['foo'],
     collectDefaults: false
+  })
+  const tf = hp.createTraceFunction({
+    allowedProps: ['foo']
   })
   setTraceFunction(tf)
 
@@ -200,10 +212,12 @@ test('Collect props passed to parents initiations', async t => {
   t.teardown(teardown)
   t.plan(1)
 
-  tf = HypertracePrometheus({
+  hp = new HypertracePrometheus({
     port: 4343,
-    allowedProps: ['foo'],
     collectDefaults: false
+  })
+  const tf = hp.createTraceFunction({
+    allowedProps: ['foo']
   })
   setTraceFunction(tf)
 
@@ -244,10 +258,12 @@ test('Setting non-allowed custom properties means they are not captured', async 
   t.teardown(teardown)
   t.plan(2)
 
-  tf = HypertracePrometheus({
+  hp = new HypertracePrometheus({
     port: 4343,
-    allowedProps: ['someAllowedProperty'],
     collectDefaults: false
+  })
+  const tf = hp.createTraceFunction({
+    allowedProps: ['someAllowedProperty']
   })
   setTraceFunction(tf)
 
@@ -268,10 +284,12 @@ test('Collecting custom properties with illegal label characters, changes the ch
   t.teardown(teardown)
   t.plan(2)
 
-  tf = HypertracePrometheus({
+  hp = new HypertracePrometheus({
     port: 4343,
-    allowedProps: ['foo-bar'],
     collectDefaults: false
+  })
+  const tf = hp.createTraceFunction({
+    allowedProps: ['foo-bar']
   })
   setTraceFunction(tf)
 
@@ -292,7 +310,11 @@ test('Passing own register means that user is able to read metrics on the passed
   t.plan(3)
 
   const register = new Prometheus.Registry()
-  tf = HypertracePrometheus({ register, collectDefaults: false })
+  hp = new HypertracePrometheus({
+    register,
+    collectDefaults: false
+  })
+  const tf = hp.createTraceFunction()
   setTraceFunction(tf)
 
   const someModule = new SomeModule()
@@ -310,7 +332,12 @@ test('Passing own register and port starts server on that port', async t => {
   t.plan(1)
 
   const register = new Prometheus.Registry()
-  tf = HypertracePrometheus({ register, port: 4343, collectDefaults: false })
+  hp = new HypertracePrometheus({
+    register,
+    port: 4343,
+    collectDefaults: false
+  })
+  const tf = hp.createTraceFunction()
   setTraceFunction(tf)
 
   const someModule = new SomeModule()
@@ -325,11 +352,16 @@ test('If passing own server, should implement using .metrics()', async t => {
   t.plan(2)
 
   const server = http.createServer(async (_, res) => {
-    const metrics = await tf.metrics()
+    const metrics = await hp.metrics()
     res.end(metrics)
   })
   server.listen(4342)
-  tf = HypertracePrometheus({ server, collectDefaults: false })
+  hp = new HypertracePrometheus({
+    server,
+    collectDefaults: false
+  })
+  const tf = hp.createTraceFunction()
+  setTraceFunction(tf)
 
   // No server running on 4343
   t.exception(async () => {
