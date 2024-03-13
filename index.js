@@ -26,6 +26,8 @@ module.exports = class HypertracePrometheus {
 
   async stop () {
     if (this.traceCounter) this.register.removeSingleMetric(this.traceCounter.name)
+    if (this.timerCounter) this.register.removeSingleMetric(this.timerCounter.name)
+    if (this.memoryInstanceLifetimeGauge) this.register.removeSingleMetric(this.memoryInstanceLifetimeGauge.name)
     if (this.server) return new Promise(resolve => this.server.close(resolve))
   }
 
@@ -80,31 +82,62 @@ module.exports = class HypertracePrometheus {
     }
   }
 
-  createMemoryFunction ({ allowedProps = [] }) {
+  createMemoryFunction ({ allowedProps = [] } = {}) {
     const labelNames = [
-      // 'id',
-      // 'object_classname',
-      // 'object_id',
-      // 'parent_object_classname',
-      // 'parent_object_id',
-      // 'caller_functionname',
-      // 'caller_filename'
+      'object_classname',
+      'object_id',
+      'parent_object_classname',
+      'parent_object_id'
     ]
     allowedProps?.forEach(name => {
-      // const cleanedName = strToValidPrometheusLabel(name)
-      // labelNames.push(`object_props_${cleanedName}`)
-      // labelNames.push(`parent_object_props_${cleanedName}`)
-      // labelNames.push(`caller_props_${cleanedName}`)
+      const cleanedName = strToValidPrometheusLabel(name)
+      labelNames.push(`object_props_${cleanedName}`)
+      labelNames.push(`parent_object_props_${cleanedName}`)
     })
 
-    this.memoryCounter = new Prometheus.Counter({
-      name: 'memory_counter',
-      help: 'Counts how many instances of a class is currently running',
+    this.memoryInstanceLifetimeGauge = new Prometheus.Gauge({
+      name: 'memory_instance_lifetime_gauge',
+      help: 'Gauge that is set to 1 when an instance if alive, and 0 when  it is garbage collected',
       labelNames
     })
-    this.register.registerMetric(this.memoryCounter)
+    this.register.registerMetric(this.memoryInstanceLifetimeGauge)
+
     return ({ type, instanceCount, object, parentObject }) => {
-      console.log('memory:', type, object)
+      const labelsInstanceLifetime = {
+        object_classname: object.className,
+        object_id: object.id
+      }
+      if (parentObject?.className) {
+        labelsInstanceLifetime.parent_object_classname = parentObject.className
+        labelsInstanceLifetime.parent_object_id = parentObject.id
+      }
+
+      allowedProps?.forEach(name => {
+        const cleanedName = strToValidPrometheusLabel(name)
+        const objectValue = object.props?.[name]
+        const parentObjectValue = parentObject?.props?.[name]
+        if (objectValue !== undefined) labelsInstanceLifetime[`object_props_${cleanedName}`] = objectValue
+        if (parentObjectValue !== undefined) labelsInstanceLifetime[`parent_object_props_${cleanedName}`] = parentObjectValue
+      })
+
+      if (type === 'alloc') {
+        this.memoryInstanceLifetimeGauge.inc(labelsInstanceLifetime)
+      } else {
+        this.memoryInstanceLifetimeGauge.dec(labelsInstanceLifetime)
+      }
+    }
+  }
+
+  createTimerFunction () {
+    this.timerCounter = new Prometheus.Counter({
+      name: 'timer_counter',
+      help: 'Counter that shows the execution times of timers',
+      labelNames: ['name']
+    })
+    this.register.registerMetric(this.timerCounter)
+
+    return (name, ms) => {
+      this.timerCounter.inc({ name }, ms)
     }
   }
 }

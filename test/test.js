@@ -6,16 +6,22 @@ const axios = require('axios')
 const {
   clearTraceFunction,
   setTraceFunction,
-  createTracer
+  createTracer,
+  setTimerFunction,
+  clearTimerFunction
+  // setMemoryFunction,
+  // clearMemoryFunction
 } = require('hypertrace')
 const http = require('http')
 
 let hp
 
 async function teardown () {
-  await hp?.stop()
+  await hp.stop()
   Prometheus.register.clear()
   clearTraceFunction()
+  clearTimerFunction()
+  // clearMemoryFunction()
 }
 
 test('Creates http server with /metrics endpoint', async t => {
@@ -69,7 +75,7 @@ test('Labels are set for trace_counter', async t => {
   setTraceFunction(tf)
 
   const someModule = new SomeModule()
-  someModule.foo('foobar')
+  someModule.callTrace('foobar')
 
   const { data } = await axios.get('http://localhost:4343/metrics')
   const [, typeStr, counterStr] = data.split('\n')
@@ -77,7 +83,7 @@ test('Labels are set for trace_counter', async t => {
   t.ok(counterStr.includes('id="foobar"'))
   t.ok(counterStr.includes('object_classname="SomeModule"'))
   t.ok(counterStr.includes('object_id="'))
-  t.ok(counterStr.includes('caller_functionname="foo"'))
+  t.ok(counterStr.includes('caller_functionname="callTrace"'))
   t.ok(counterStr.match(/caller_filename="[^"]*\/test\/fixtures\/SomeModule.js"/))
 })
 
@@ -90,7 +96,7 @@ test('parentObject properties are not set if no parent tracer is set', async t =
   setTraceFunction(tf)
 
   const someModule = new SomeModule()
-  someModule.foo()
+  someModule.callTrace()
 
   const { data } = await axios.get('http://localhost:4343/metrics')
   const [, , counterStr] = data.split('\n')
@@ -120,14 +126,14 @@ test('parentObject is set if parent tracer is set', async t => {
       this.tracer = createTracer(this, { parent: parenTracer })
     }
 
-    foo () {
+    callTrace () {
       this.tracer.trace()
     }
   }
 
   const parent = new Parent()
   const child = parent.createChild()
-  child.foo()
+  child.callTrace()
 
   const { data } = await axios.get('http://localhost:4343/metrics')
   const [, , counterStr] = data.split('\n')
@@ -147,13 +153,13 @@ test('Counter is set for trace_counter', async t => {
 
   const someModule = new SomeModule()
 
-  someModule.foo()
+  someModule.callTrace()
 
   const { data: data1 } = await axios.get('http://localhost:4343/metrics')
   const [, , counterStr1] = data1.split('\n')
   t.is(counterStr1[counterStr1.length - 1], '1')
 
-  someModule.foo()
+  someModule.callTrace()
 
   const { data: data2 } = await axios.get('http://localhost:4343/metrics')
   const [, , counterStr2] = data2.split('\n')
@@ -177,7 +183,7 @@ test('Collect props passed to caller', async t => {
     baz: 42
   }
   const someModule = new SomeModule()
-  someModule.foo(someProps)
+  someModule.callTrace(someProps)
 
   const { data } = await axios.get('http://localhost:4343/metrics')
   const [, , counterStr] = data.split('\n')
@@ -201,7 +207,7 @@ test('Collect props passed at initiation as object_props_[name]', async t => {
     foo: 'bleh'
   }
   const someModule = new SomeModule(someProps)
-  someModule.foo()
+  someModule.callTrace()
 
   const { data } = await axios.get('http://localhost:4343/metrics')
   const [, , counterStr] = data.split('\n')
@@ -240,14 +246,14 @@ test('Collect props passed to parents initiations', async t => {
       this.tracer = createTracer(this, { parent: parentTracer })
     }
 
-    foo () {
+    callTrace () {
       this.tracer.trace()
     }
   }
 
   const parent = new Parent()
   const child = parent.createChild()
-  child.foo()
+  child.callTrace()
 
   const { data } = await axios.get('http://localhost:4343/metrics')
   const [, , counterStr] = data.split('\n')
@@ -272,7 +278,7 @@ test('Setting non-allowed custom properties means they are not captured', async 
     someNonallowedProperty: 'bar'
   }
   const someModule = new SomeModule(props)
-  someModule.foo()
+  someModule.callTrace()
 
   const { data } = await axios.get('http://localhost:4343/metrics')
   const [, , counterStr] = data.split('\n')
@@ -297,7 +303,7 @@ test('Collecting custom properties with illegal label characters, changes the ch
     'foo-bar': 'foo'
   }
   const someModule = new SomeModule(someProps)
-  someModule.foo()
+  someModule.callTrace()
 
   const { data } = await axios.get('http://localhost:4343/metrics')
   const [, , counterStr] = data.split('\n')
@@ -318,12 +324,12 @@ test('Passing own register means that user is able to read metrics on the passed
   setTraceFunction(tf)
 
   const someModule = new SomeModule()
-  someModule.foo()
+  someModule.callTrace()
 
   const metrics = await register.metrics()
   const traceMetric = metrics.split('\n')[2]
   t.ok(traceMetric.includes('object_classname="SomeModule"'))
-  t.ok(traceMetric.includes('caller_functionname="foo"'))
+  t.ok(traceMetric.includes('caller_functionname="callTrace"'))
   t.ok(traceMetric.endsWith('1'))
 })
 
@@ -341,7 +347,7 @@ test('Passing own register and port starts server on that port', async t => {
   setTraceFunction(tf)
 
   const someModule = new SomeModule()
-  someModule.foo()
+  someModule.callTrace()
 
   const { data } = await axios.get('http://localhost:4343/metrics')
   t.ok(data.includes('# HELP trace_counter Counts how many times a function has been traced'))
@@ -371,4 +377,137 @@ test('If passing own server, should implement using .metrics()', async t => {
   const { data } = await axios.get('http://localhost:4342')
   t.ok(data.includes('# HELP trace_counter Counts how many times a function has been traced'))
   server.close()
+})
+
+// test('Using createMemoryFunction generates a gauge', async t => {
+//   t.teardown(teardown)
+//   t.plan(2)
+
+//   hp = new HypertracePrometheus({
+//     port: 4343,
+//     collectDefaults: false
+//   })
+//   const mf = hp.createMemoryFunction()
+//   setMemoryFunction(mf)
+
+//   class Foo {
+//     constructor () {
+//       this.tracer = createTracer(this)
+//     }
+//   }
+//   const arr = [new Foo()]
+
+//   const { data: data1 } = await axios.get('http://localhost:4343/metrics')
+//   const instanceLifetimeGaugeStr1 = data1.split('\n').find(l => l.startsWith('memory_instance_lifetime_gauge'))
+//   t.is(instanceLifetimeGaugeStr1, 'memory_instance_lifetime_gauge{object_classname="Foo",object_id="1"} 1')
+
+//   arr.shift()
+//   global.gc()
+//   await new Promise(resolve => setTimeout(resolve, 200)) // Hack: wait for gc to kick in
+
+//   const { data: data2 } = await axios.get('http://localhost:4343/metrics')
+//   const instanceLifetimeGaugeStr2 = data2.split('\n').find(l => l.startsWith('memory_instance_lifetime_gauge'))
+//   t.is(instanceLifetimeGaugeStr2, 'memory_instance_lifetime_gauge{object_classname="Foo",object_id="1"} 0')
+// })
+
+// test('Using createMemoryFunction with several object types creates several lines', async t => {
+//   t.teardown(teardown)
+//   t.plan(2)
+
+//   hp = new HypertracePrometheus({
+//     port: 4343,
+//     collectDefaults: false
+//   })
+//   const mf = hp.createMemoryFunction()
+//   setMemoryFunction(mf)
+
+//   class Foo {
+//     constructor () {
+//       this.tracer = createTracer(this)
+//     }
+//   }
+//   class Bar {
+//     constructor () {
+//       this.tracer = createTracer(this)
+//     }
+//   }
+
+//   new Foo() // eslint-disable-line no-new
+//   new Bar() // eslint-disable-line no-new
+
+//   const { data } = await axios.get('http://localhost:4343/metrics')
+//   const [fooGaugeStr, barGaugeStr] = data.split('\n').filter(l => l.startsWith('memory_instance_lifetime_gauge'))
+//   t.is(fooGaugeStr, 'memory_instance_lifetime_gauge{object_classname="Foo",object_id="1"} 1')
+//   t.is(barGaugeStr, 'memory_instance_lifetime_gauge{object_classname="Bar",object_id="1"} 1')
+// })
+
+// test('Using allowedProps with createMemoryFunction', async t => {
+//   t.teardown(teardown)
+//   t.plan(1)
+
+//   hp = new HypertracePrometheus({
+//     port: 4343,
+//     collectDefaults: false
+//   })
+//   const mf = hp.createMemoryFunction({ allowedProps: ['someProp'] })
+//   setMemoryFunction(mf)
+//   new SomeModule({ someProp: 'value' }) // eslint-disable-line no-new
+
+//   const { data } = await axios.get('http://localhost:4343/metrics')
+//   t.ok(data.includes('object_props_someProp="value"'))
+// })
+
+// test('Lifetime count is set to 1 when object is alive, and 0 when it is gc\'ed', async t => {
+//   t.teardown(teardown)
+//   t.plan(2)
+
+//   hp = new HypertracePrometheus({
+//     port: 4343,
+//     collectDefaults: false
+//   })
+//   const mf = hp.createMemoryFunction()
+//   setMemoryFunction(mf)
+
+//   class Foo {
+//     constructor () {
+//       this.tracer = createTracer(this)
+//     }
+//   }
+
+//   const arr = [new Foo()]
+
+//   const { data: data1 } = await axios.get('http://localhost:4343/metrics')
+//   const instanceLifetimeGaugeStr1 = data1.split('\n').find(l => l.startsWith('memory_instance_lifetime_gauge'))
+//   t.is(instanceLifetimeGaugeStr1, 'memory_instance_lifetime_gauge{object_classname="Foo",object_id="1"} 1')
+
+//   arr.shift()
+//   global.gc()
+//   await new Promise(resolve => setTimeout(resolve, 200))
+
+//   const { data: data2 } = await axios.get('http://localhost:4343/metrics')
+//   const instanceLifetimeGaugeStr2 = data2.split('\n').find(l => l.startsWith('memory_instance_lifetime_gauge'))
+//   t.is(instanceLifetimeGaugeStr2, 'memory_instance_lifetime_gauge{object_classname="Foo",object_id="1"} 0')
+// })
+
+test('Using createTimerFunction create a counter', async t => {
+  t.teardown(teardown)
+  t.plan(3)
+
+  hp = new HypertracePrometheus({
+    port: 4343,
+    collectDefaults: false
+  })
+
+  const tf = hp.createTimerFunction()
+  setTimerFunction(tf)
+
+  const someModule = new SomeModule()
+  await someModule.callTimer('foobar', 200)
+
+  const { data } = await axios.get('http://localhost:4343/metrics')
+  const [, typeStr, counterStr] = data.split('\n')
+  const [labelStr, time] = counterStr.split(' ')
+  t.is(typeStr, '# TYPE timer_counter counter')
+  t.is(labelStr, 'timer_counter{name="foobar"}')
+  t.ok(Number(time) >= 200)
 })

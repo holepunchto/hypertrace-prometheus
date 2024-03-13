@@ -4,7 +4,7 @@
   "description": "Adds support for Prometheus/Grafana to hypertrace",
   "main": "index.js",
   "scripts": {
-    "test": "standard && node test/test.js"
+    "test": "standard && node --expose-gc test/test.js"
   },
   "keywords": [],
   "author": "",
