@@ -7,8 +7,8 @@
     "test": "standard && node test/test.js"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Holepunch Inc",
+  "license": "Apache-2.0",
   "dependencies": {
     "prom-client": "^15.0.0"
   },
