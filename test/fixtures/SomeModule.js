@@ -1,16 +1,17 @@
-const { createTracer } = require('hypertrace')
+const { createTracer, createTimer } = require('hypertrace')
 
 module.exports = class SomeModule {
   constructor (props) {
     this.tracer = createTracer(this, { props })
   }
 
-  foo (opts) {
+  callTrace (opts) {
     this.tracer.trace(opts)
   }
 
-  getTracingObjectId () {
-    this.tracer.trace()
-    return this.tracer.getObjectId()
+  async callTimer (name, ms) {
+    const stop = createTimer(name)
+    await new Promise(resolve => setTimeout(resolve, 200))
+    stop()
   }
 }
